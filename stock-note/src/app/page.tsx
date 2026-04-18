@@ -7,7 +7,6 @@ import {
   getPortfolio,
   getRecentTrades,
   getPendingReviewTrades,
-  CURRENT_USD_KRW,
 } from "@/db/queries";
 import { INDEX_SNAPSHOTS } from "@/lib/mock";
 import {
@@ -20,18 +19,15 @@ import {
 } from "@/lib/format";
 import { ArrowRight, Clock } from "lucide-react";
 
-function toKRW(amount: number, currency: string): number {
-  if (currency === "KRW") return amount;
-  return amount * CURRENT_USD_KRW;
-}
-
 export default async function Home() {
   const now = new Date();
-  const [{ summary }, recent, pending] = await Promise.all([
+  const [{ summary, usdKrw }, recent, pending] = await Promise.all([
     getPortfolio(),
     getRecentTrades(3),
     getPendingReviewTrades(now),
   ]);
+  const toKRW = (amount: number, currency: string) =>
+    currency === "KRW" ? amount : amount * usdKrw;
 
   return (
     <div className="space-y-4 pt-2">
