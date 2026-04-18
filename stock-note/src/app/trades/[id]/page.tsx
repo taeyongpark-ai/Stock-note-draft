@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import Logo from "@/components/ui/Logo";
 import TradeChart from "@/components/ui/TradeChart";
-import { getTrade, inst, generatePriceSeries, TRADES } from "@/lib/mock";
+import ReviewForm from "./ReviewForm";
+import { getTradeById, getTradesByInstrumentId } from "@/db/queries";
+import { generatePriceSeries, type Trade as MockTrade } from "@/lib/mock";
 import {
   formatMoney,
   formatPct,
@@ -18,22 +20,55 @@ type Props = PageProps<"/trades/[id]">;
 
 export default async function TradeDetail({ params }: Props) {
   const { id } = await params;
-  const trade = getTrade(id);
-  if (!trade) notFound();
-  const it = inst(trade.instrumentId);
-  const now = new Date("2026-04-18T10:16:00+09:00");
+  const row = await getTradeById(id);
+  if (!row) notFound();
+
+  const { trade, instrument: it, review } = row;
+  const now = new Date();
   const held = daysBetween(new Date(trade.executedAt), now);
-  const instrumentTrades = TRADES.filter(
-    (t) => t.instrumentId === trade.instrumentId
-  ).sort((a, b) => a.executedAt.localeCompare(b.executedAt));
 
-  // 기회비용: 매도 거래라면 "안 팔았으면" 현재가 대비 차액
-  const opportunity =
-    trade.side === "SELL"
-      ? (it.currentPrice - trade.price) / trade.price
-      : (it.currentPrice - trade.price) / trade.price;
+  const instrumentRows = await getTradesByInstrumentId(trade.instrumentId);
+  const instrumentTrades = instrumentRows.map((r) => r.trade);
 
+  const opportunity = (it.currentPrice - trade.price) / trade.price;
   const totalAmount = trade.price * trade.quantity;
+
+  // generatePriceSeries는 mock 타입을 기대하므로 DB 데이터를 호환 형태로 변환
+  const mockInstrument = {
+    id: it.id,
+    symbol: it.symbol,
+    name: it.name,
+    market: it.market,
+    currency: it.currency,
+    color: it.color,
+    currentPrice: it.currentPrice,
+    dayChange: it.dayChange,
+  };
+  const mockTrades: MockTrade[] = instrumentTrades.map((t) => ({
+    id: t.id,
+    instrumentId: t.instrumentId,
+    side: t.side,
+    quantity: t.quantity,
+    price: t.price,
+    fee: t.fee,
+    executedAt: t.executedAt,
+    thesis: t.thesis,
+    confidence: t.confidence as 1 | 2 | 3 | 4 | 5,
+    tags: (t.tags as string[]) ?? [],
+    fxToKrw: t.fxToKrw ?? undefined,
+    review: (() => {
+      const r = instrumentRows.find((row) => row.trade.id === t.id)?.review;
+      if (!r) return undefined;
+      return {
+        tradeId: r.tradeId,
+        reviewedAt: r.reviewedAt,
+        verdict: r.verdict,
+        reflection: r.reflection,
+        counterfactualPrice: r.counterfactualPrice ?? undefined,
+        counterfactualAt: r.counterfactualAt ?? undefined,
+      };
+    })(),
+  }));
 
   return (
     <div className="space-y-4 pt-2 pb-4">
@@ -79,8 +114,8 @@ export default async function TradeDetail({ params }: Props) {
           </span>
         </div>
         <TradeChart
-          series={generatePriceSeries(it, instrumentTrades, now)}
-          markers={instrumentTrades.map((t) => ({
+          series={generatePriceSeries(mockInstrument, mockTrades, now)}
+          markers={mockTrades.map((t) => ({
             date: t.executedAt,
             price: t.price,
             side: t.side,
@@ -91,8 +126,7 @@ export default async function TradeDetail({ params }: Props) {
           <span>
             {formatDateKo(
               new Date(
-                new Date(instrumentTrades[0].executedAt).getTime() -
-                  30 * 86400000
+                new Date(instrumentTrades[0].executedAt).getTime() - 30 * 86400000
               )
             )}
           </span>
@@ -164,7 +198,6 @@ export default async function TradeDetail({ params }: Props) {
             </div>
           </div>
         </div>
-
         <div
           className={`mt-4 p-4 rounded-xl ${
             opportunity > 0
@@ -196,21 +229,17 @@ export default async function TradeDetail({ params }: Props) {
         <div className="flex items-center gap-2 mb-4">
           <Sparkles size={18} className="text-[color:var(--accent)]" />
           <span className="font-bold text-[15px]">매매 이유</span>
-          {instrumentTrades.length > 1 && (
+          {instrumentRows.length > 1 && (
             <span className="text-[11px] text-[color:var(--text-subtle)] ml-1">
-              총 {instrumentTrades.length}건
+              총 {instrumentRows.length}건
             </span>
           )}
         </div>
         <div className="space-y-5">
-          {instrumentTrades.map((t, i) => (
+          {instrumentRows.map(({ trade: t, instrument: ins, review: r }, i) => (
             <div
               key={t.id}
-              className={
-                i > 0
-                  ? "pt-5 border-t border-[color:var(--border)]"
-                  : ""
-              }
+              className={i > 0 ? "pt-5 border-t border-[color:var(--border)]" : ""}
             >
               <div className="flex items-center flex-wrap gap-2 mb-2">
                 <span
@@ -227,9 +256,9 @@ export default async function TradeDetail({ params }: Props) {
                 </span>
                 <span className="text-xs text-[color:var(--text-muted)] tabular">
                   {t.quantity}
-                  {it.currency === "USDT" ? "" : "주"} @{" "}
+                  {ins.currency === "USDT" ? "" : "주"} @{" "}
                   {t.price.toLocaleString()}
-                  {it.currency === "KRW" ? "원" : ""}
+                  {ins.currency === "KRW" ? "원" : ""}
                 </span>
                 <span className="text-[11px] text-[color:var(--text-subtle)] tabular">
                   {"●".repeat(t.confidence)}
@@ -244,9 +273,9 @@ export default async function TradeDetail({ params }: Props) {
               <p className="text-[14px] leading-relaxed whitespace-pre-wrap">
                 &ldquo;{t.thesis}&rdquo;
               </p>
-              {t.tags.length > 0 && (
+              {((t.tags as string[]) ?? []).length > 0 && (
                 <div className="mt-2 flex gap-1.5 flex-wrap">
-                  {t.tags.map((tg) => (
+                  {(t.tags as string[]).map((tg) => (
                     <span
                       key={tg}
                       className="text-[11px] px-2 py-0.5 rounded-full bg-[color:var(--card-muted)] text-[color:var(--text-muted)]"
@@ -256,30 +285,30 @@ export default async function TradeDetail({ params }: Props) {
                   ))}
                 </div>
               )}
-              {t.review && (
+              {r && (
                 <div className="mt-3 p-3 rounded-xl border border-[color:var(--border)] bg-gradient-to-br from-white to-[#F3F8F5]">
                   <div className="flex items-center gap-2 mb-1.5">
                     <span
                       className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                        t.review.verdict === "GOOD"
+                        r.verdict === "GOOD"
                           ? "bg-[color:var(--up-bg)] text-[color:var(--up)]"
-                          : t.review.verdict === "BAD"
+                          : r.verdict === "BAD"
                           ? "bg-[color:var(--down-bg)] text-[color:var(--down)]"
                           : "bg-[color:var(--card-muted)] text-[color:var(--text-muted)]"
                       }`}
                     >
-                      {t.review.verdict === "GOOD"
+                      {r.verdict === "GOOD"
                         ? "👍 잘한 매매"
-                        : t.review.verdict === "BAD"
+                        : r.verdict === "BAD"
                         ? "👎 아쉬운 매매"
                         : "— 보통"}
                     </span>
                     <span className="text-[11px] text-[color:var(--text-muted)]">
-                      {formatDateKo(new Date(t.review.reviewedAt))} 복기
+                      {formatDateKo(new Date(r.reviewedAt))} 복기
                     </span>
                   </div>
                   <p className="text-[13px] leading-relaxed whitespace-pre-wrap">
-                    {t.review.reflection}
+                    {r.reflection}
                   </p>
                 </div>
               )}
@@ -288,6 +317,8 @@ export default async function TradeDetail({ params }: Props) {
         </div>
       </Card>
 
+      {/* 복기 작성 (현재 거래에 복기가 없을 때만) */}
+      {!review && <ReviewForm tradeId={trade.id} />}
     </div>
   );
 }
