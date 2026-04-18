@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import Sparkline from "@/components/ui/Sparkline";
