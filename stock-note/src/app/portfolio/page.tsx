@@ -2,7 +2,8 @@ import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import Logo from "@/components/ui/Logo";
 import TopTabs from "@/components/shell/TopTabs";
-import { computePositions, totalPortfolioKRW, USD_KRW } from "@/lib/mock";
+import { getPortfolio, CURRENT_USD_KRW } from "@/db/queries";
+import type { Position } from "@/lib/portfolio";
 import { formatMoney, formatPct, deltaClass, deltaArrow } from "@/lib/format";
 
 function formatNative(v: number, currency: string): string {
@@ -16,9 +17,7 @@ function formatNative(v: number, currency: string): string {
     );
   }
   if (currency === "USDT") {
-    return (
-      v.toLocaleString("en-US", { maximumFractionDigits: 2 }) + " USDT"
-    );
+    return v.toLocaleString("en-US", { maximumFractionDigits: 2 }) + " USDT";
   }
   return v.toLocaleString("ko-KR") + "원";
 }
@@ -27,17 +26,18 @@ function formatKRWAmount(v: number): string {
   return Math.round(v).toLocaleString("ko-KR") + "원";
 }
 
-function PositionList({ positions }: { positions: ReturnType<typeof computePositions> }) {
+function PositionList({ positions }: { positions: Position[] }) {
   return (
     <div>
       {positions.map((p, i) => {
         const isKRW = p.instrument.currency === "KRW";
         const unit = p.instrument.currency === "USDT" ? "" : "주";
-        const krwCurrentPerShare = p.instrument.currentPrice * USD_KRW;
+        const krwCurrentPerShare =
+          p.instrument.currentPrice * (isKRW ? 1 : CURRENT_USD_KRW);
         return (
           <Link
             key={p.instrument.id}
-            href={`/instruments/${p.instrument.id}`}
+            href={`/trend/${p.instrument.id}`}
             className={`flex items-start gap-3 px-5 py-3.5 ${
               i !== positions.length - 1
                 ? "border-b border-[color:var(--border)]"
@@ -52,7 +52,8 @@ function PositionList({ positions }: { positions: ReturnType<typeof computePosit
                     {p.instrument.name}
                   </div>
                   <div className="text-xs text-[color:var(--text-muted)] mt-0.5 tabular">
-                    {p.quantity}{unit}
+                    {p.quantity}
+                    {unit}
                   </div>
                 </div>
                 <div className="text-right shrink-0">
@@ -88,12 +89,14 @@ function PositionList({ positions }: { positions: ReturnType<typeof computePosit
   );
 }
 
-export default function PortfolioPage() {
-  const positions = computePositions();
-  const total = totalPortfolioKRW(positions);
+export default async function PortfolioPage() {
+  const { positions, cash, summary } = await getPortfolio();
 
   const domestic = positions.filter((p) => p.instrument.currency === "KRW");
   const foreign = positions.filter((p) => p.instrument.currency !== "KRW");
+  const cashByCurrency = new Map(cash.map((c) => [c.currency, c.amount]));
+  const krwCash = cashByCurrency.get("KRW") ?? 0;
+  const usdCash = cashByCurrency.get("USD") ?? 0;
 
   return (
     <div className="space-y-4 pt-2">
@@ -102,35 +105,77 @@ export default function PortfolioPage() {
       <Card className="px-5 py-5">
         <div className="text-sm text-[color:var(--text-muted)]">총 평가금액</div>
         <div className="mt-1 text-[32px] font-black tabular leading-tight">
-          {formatMoney(total.total)}
+          {formatMoney(summary.total)}
         </div>
-        <div className={`text-[15px] font-semibold tabular ${deltaClass(total.unrealized)}`}>
-          {deltaArrow(total.unrealized)} {formatMoney(Math.abs(total.unrealized))}{" "}
-          ({formatPct(total.unrealizedPct)})
+        <div
+          className={`text-[15px] font-semibold tabular ${deltaClass(summary.unrealized)}`}
+        >
+          {deltaArrow(summary.unrealized)} {formatMoney(Math.abs(summary.unrealized))}{" "}
+          ({formatPct(summary.unrealizedPct)})
         </div>
       </Card>
 
-      <Card className="py-1">
-        <div className="px-5 pt-4 pb-2 text-[15px] font-bold">내 주식</div>
+      {/* 현금 잔고 */}
+      {(krwCash > 0 || usdCash > 0) && (
+        <Card className="px-5 py-4">
+          <div className="text-[15px] font-bold mb-3">현금 잔고</div>
+          <div className="space-y-2">
+            {krwCash > 0 && (
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-[color:var(--text-muted)]">원화</span>
+                <span className="text-[15px] font-bold tabular">
+                  {formatKRWAmount(krwCash)}
+                </span>
+              </div>
+            )}
+            {usdCash > 0 && (
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-[color:var(--text-muted)]">USD</span>
+                <span className="text-[15px] font-bold tabular">
+                  {formatNative(usdCash, "USD")}
+                  <span className="text-xs font-normal text-[color:var(--text-muted)] ml-1">
+                    ≈ {formatKRWAmount(usdCash * CURRENT_USD_KRW)}
+                  </span>
+                </span>
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
 
-        {domestic.length > 0 && (
-          <>
-            <div className="px-5 py-2 text-xs font-semibold text-[color:var(--text-muted)] bg-[color:var(--surface-raised)] border-y border-[color:var(--border)]">
-              국내주식
-            </div>
-            <PositionList positions={domestic} />
-          </>
-        )}
+      {positions.length > 0 && (
+        <Card className="py-1">
+          <div className="px-5 pt-4 pb-2 text-[15px] font-bold">내 주식</div>
 
-        {foreign.length > 0 && (
-          <>
-            <div className={`px-5 py-2 text-xs font-semibold text-[color:var(--text-muted)] bg-[color:var(--surface-raised)] border-[color:var(--border)] ${domestic.length > 0 ? "border-t" : ""} border-b`}>
-              해외주식
-            </div>
-            <PositionList positions={foreign} />
-          </>
-        )}
-      </Card>
+          {domestic.length > 0 && (
+            <>
+              <div className="px-5 py-2 text-xs font-semibold text-[color:var(--text-muted)] bg-[color:var(--surface-raised)] border-y border-[color:var(--border)]">
+                국내주식
+              </div>
+              <PositionList positions={domestic} />
+            </>
+          )}
+
+          {foreign.length > 0 && (
+            <>
+              <div
+                className={`px-5 py-2 text-xs font-semibold text-[color:var(--text-muted)] bg-[color:var(--surface-raised)] border-[color:var(--border)] ${
+                  domestic.length > 0 ? "border-t" : ""
+                } border-b`}
+              >
+                해외주식
+              </div>
+              <PositionList positions={foreign} />
+            </>
+          )}
+        </Card>
+      )}
+
+      {positions.length === 0 && (
+        <Card className="px-5 py-10 text-center text-sm text-[color:var(--text-muted)]">
+          보유 종목이 없어요. 매매를 등록하면 여기에 표시됩니다.
+        </Card>
+      )}
     </div>
   );
 }

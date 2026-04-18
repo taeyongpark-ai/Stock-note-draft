@@ -107,9 +107,21 @@ export default function TradeForm({
       .split(",")
       .map((t) => t.trim())
       .filter(Boolean);
+    // DB에 없는 SMS 합성 종목이면 newInstrument 전달
+    const isSynth = selected.id.startsWith("sms-") || !allInstruments.find((i) => i.id === selected.id);
     startTransition(async () => {
       await createTrade({
-        instrumentId: selected.id,
+        instrumentId: isSynth ? undefined : selected.id,
+        newInstrument: isSynth
+          ? {
+              symbol: selected.symbol,
+              name: selected.name,
+              market: selected.market,
+              currency: selected.currency,
+              color: selected.color,
+              currentPrice: Number(price),
+            }
+          : undefined,
         side,
         quantity: Number(qty),
         price: Number(price),
