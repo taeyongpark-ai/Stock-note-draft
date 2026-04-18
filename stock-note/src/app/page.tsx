@@ -4,14 +4,12 @@ import Sparkline from "@/components/ui/Sparkline";
 import Logo from "@/components/ui/Logo";
 import TopTabs from "@/components/shell/TopTabs";
 import {
-  computePositions,
-  totalPortfolioKRW,
-  pendingReviews,
-  TRADES,
-  inst,
-  INDEX_SNAPSHOTS,
-  toKRW,
-} from "@/lib/mock";
+  getPortfolio,
+  getRecentTrades,
+  getPendingReviewTrades,
+  CURRENT_USD_KRW,
+} from "@/db/queries";
+import { INDEX_SNAPSHOTS } from "@/lib/mock";
 import {
   formatMoney,
   formatPct,
@@ -22,14 +20,18 @@ import {
 } from "@/lib/format";
 import { ArrowRight, Clock } from "lucide-react";
 
-export default function Home() {
-  const now = new Date("2026-04-18T10:16:00+09:00");
-  const positions = computePositions();
-  const total = totalPortfolioKRW(positions);
-  const reviews = pendingReviews(TRADES, now);
-  const recent = [...TRADES]
-    .sort((a, b) => b.executedAt.localeCompare(a.executedAt))
-    .slice(0, 3);
+function toKRW(amount: number, currency: string): number {
+  if (currency === "KRW") return amount;
+  return amount * CURRENT_USD_KRW;
+}
+
+export default async function Home() {
+  const now = new Date();
+  const [{ summary }, recent, pending] = await Promise.all([
+    getPortfolio(),
+    getRecentTrades(3),
+    getPendingReviewTrades(now),
+  ]);
 
   return (
     <div className="space-y-4 pt-2">
@@ -40,11 +42,13 @@ export default function Home() {
       <Card className="px-5 py-5">
         <div className="text-sm text-[color:var(--text-muted)]">총 평가금액</div>
         <div className="mt-1.5 text-[34px] font-black tabular leading-tight">
-          {formatMoney(total.total)}
+          {formatMoney(summary.total)}
         </div>
-        <div className={`mt-1 text-[15px] font-semibold tabular ${deltaClass(total.unrealized)}`}>
-          {deltaArrow(total.unrealized)} {formatMoney(Math.abs(total.unrealized))}{" "}
-          ({formatPct(total.unrealizedPct)})
+        <div
+          className={`mt-1 text-[15px] font-semibold tabular ${deltaClass(summary.unrealized)}`}
+        >
+          {deltaArrow(summary.unrealized)} {formatMoney(Math.abs(summary.unrealized))}{" "}
+          ({formatPct(summary.unrealizedPct)})
         </div>
         <div className="mt-4 flex gap-2">
           <Link
@@ -63,17 +67,17 @@ export default function Home() {
       </Card>
 
       {/* 복기 대기 배너 */}
-      {reviews.length > 0 && (
-        <Link href={`/trades/${reviews[0].id}`}>
+      {pending.length > 0 && (
+        <Link href={`/trades/${pending[0].trade.id}`}>
           <Card className="px-5 py-4 flex items-center gap-3 bg-gradient-to-r from-[#F7F3E8] to-[#FEF5E7] border-[#F0E4C2]">
             <div className="w-10 h-10 rounded-full bg-[#F4C430] grid place-items-center">
               <Clock size={20} className="text-white" />
             </div>
             <div className="flex-1">
-              <div className="text-[15px] font-bold">복기 대기 {reviews.length}건</div>
+              <div className="text-[15px] font-bold">복기 대기 {pending.length}건</div>
               <div className="text-xs text-[color:var(--text-muted)] truncate">
-                {inst(reviews[0].instrumentId).name} 매도 후{" "}
-                {daysBetween(new Date(reviews[0].executedAt), now)}일 경과
+                {pending[0].instrument.name} 매도 후{" "}
+                {daysBetween(new Date(pending[0].trade.executedAt), now)}일 경과
               </div>
             </div>
             <ArrowRight size={18} className="text-[color:var(--text-muted)]" />
@@ -88,7 +92,7 @@ export default function Home() {
         <span>🇺🇸 장마감</span>
       </div>
 
-      {/* 지수 미니카드 가로 스크롤 */}
+      {/* 지수 미니카드 (Phase B 이전: mock 유지) */}
       <div className="-mx-4 px-4 overflow-x-auto">
         <div className="flex gap-3 min-w-max pb-1">
           {INDEX_SNAPSHOTS.map((s) => (
@@ -120,8 +124,12 @@ export default function Home() {
           </Link>
         </div>
         <div>
-          {recent.map((t, i) => {
-            const it = inst(t.instrumentId);
+          {recent.length === 0 && (
+            <div className="px-5 py-8 text-sm text-[color:var(--text-muted)] text-center">
+              매매 기록이 아직 없어요.
+            </div>
+          )}
+          {recent.map(({ trade: t, instrument: it }, i) => {
             const amountKRW = toKRW(t.price * t.quantity, it.currency);
             return (
               <Link

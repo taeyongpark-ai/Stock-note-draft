@@ -83,6 +83,24 @@ export const newsItems = sqliteTable("news_items", {
   sortOrder: integer("sort_order").notNull().default(0),
 });
 
+// ---------- cash_balances ----------
+export const cashBalances = sqliteTable("cash_balances", {
+  currency: text("currency", { enum: ["KRW", "USD", "USDT"] }).primaryKey(),
+  amount: real("amount").notNull().default(0),
+});
+
+// ---------- fx_transactions ----------
+export const fxTransactions = sqliteTable("fx_transactions", {
+  id: text("id").primaryKey(),
+  fromCurrency: text("from_currency", { enum: ["KRW", "USD", "USDT"] }).notNull(),
+  fromAmount: real("from_amount").notNull(),
+  toCurrency: text("to_currency", { enum: ["KRW", "USD", "USDT"] }).notNull(),
+  toAmount: real("to_amount").notNull(),
+  rate: real("rate").notNull(), // from 기준 1단위당 to 환율 (SMS 표시값)
+  executedAt: text("executed_at").notNull(),
+  memo: text("memo"),
+});
+
 // ---------- instrument_catalysts ----------
 export const instrumentCatalysts = sqliteTable("instrument_catalysts", {
   instrumentId: text("instrument_id")
