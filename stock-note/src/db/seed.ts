@@ -3,6 +3,7 @@
 // 기존 데이터를 모두 비우고 mock.ts 내용을 다시 채운다.
 // DATABASE_URL 미지정 시 client.ts가 `file:./local.db`로 fallback 하므로 로컬에서는 env 없어도 됨.
 
+import "./load-env";
 import { db } from "./client";
 import {
   instruments,
