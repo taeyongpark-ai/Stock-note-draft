@@ -5,6 +5,7 @@
 // 실행: `npm run db:bootstrap`
 // ⚠️ 기존 매매/리뷰/관심/이벤트/뉴스 데이터가 모두 삭제됩니다.
 
+import "./load-env";
 import { db } from "./client";
 import {
   instruments,
