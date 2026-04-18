@@ -1,14 +1,14 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Star, Plus, List, BarChart3 } from "lucide-react";
+import { Home, Wallet, Plus, List, LineChart } from "lucide-react";
 
 const tabs = [
   { href: "/", label: "홈", icon: Home },
-  { href: "/watchlist", label: "관심", icon: Star },
+  { href: "/portfolio", label: "내 투자", icon: Wallet },
   { href: "/trades/new", label: "매매등록", icon: Plus, fab: true },
   { href: "/trades", label: "거래내역", icon: List },
-  { href: "/analytics", label: "분석", icon: BarChart3 },
+  { href: "/trend", label: "동향", icon: LineChart },
 ];
 
 export default function BottomNav() {

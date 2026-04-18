@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import Logo from "@/components/ui/Logo";
-import { getTrade, inst } from "@/lib/mock";
+import TradeChart from "@/components/ui/TradeChart";
+import { getTrade, inst, generatePriceSeries, TRADES } from "@/lib/mock";
 import {
   formatMoney,
   formatPct,
@@ -22,6 +23,9 @@ export default async function TradeDetail({ params }: Props) {
   const it = inst(trade.instrumentId);
   const now = new Date("2026-04-18T10:16:00+09:00");
   const held = daysBetween(new Date(trade.executedAt), now);
+  const instrumentTrades = TRADES.filter(
+    (t) => t.instrumentId === trade.instrumentId
+  ).sort((a, b) => a.executedAt.localeCompare(b.executedAt));
 
   // 기회비용: 매도 거래라면 "안 팔았으면" 현재가 대비 차액
   const opportunity =
@@ -64,8 +68,44 @@ export default async function TradeDetail({ params }: Props) {
             </div>
           </div>
         </div>
+      </Card>
 
-        <div className="mt-5 grid grid-cols-2 gap-4">
+      {/* 주가 차트 */}
+      <Card className="p-5">
+        <div className="flex items-center justify-between mb-3">
+          <span className="font-bold text-[15px]">주가 흐름</span>
+          <span className="text-[11px] text-[color:var(--text-subtle)]">
+            미리보기용 가상 시계열
+          </span>
+        </div>
+        <TradeChart
+          series={generatePriceSeries(it, instrumentTrades, now)}
+          markers={instrumentTrades.map((t) => ({
+            date: t.executedAt,
+            price: t.price,
+            side: t.side,
+            current: t.id === trade.id,
+          }))}
+        />
+        <div className="flex justify-between mt-2 text-[11px] text-[color:var(--text-muted)] tabular">
+          <span>
+            {formatDateKo(
+              new Date(
+                new Date(instrumentTrades[0].executedAt).getTime() -
+                  30 * 86400000
+              )
+            )}
+          </span>
+          <span>
+            매수 {instrumentTrades.filter((t) => t.side === "BUY").length}회
+            {" · "}
+            매도 {instrumentTrades.filter((t) => t.side === "SELL").length}회
+          </span>
+          <span>오늘</span>
+        </div>
+
+        {/* 체결 정보 */}
+        <div className="mt-5 pt-5 border-t border-[color:var(--border)] grid grid-cols-2 gap-4">
           <div>
             <div className="text-xs text-[color:var(--text-muted)]">수량</div>
             <div className="text-[18px] font-bold tabular">
@@ -96,19 +136,6 @@ export default async function TradeDetail({ params }: Props) {
             </div>
           </div>
         </div>
-
-        {trade.tags.length > 0 && (
-          <div className="mt-4 flex gap-1.5 flex-wrap">
-            {trade.tags.map((tg) => (
-              <span
-                key={tg}
-                className="text-[12px] px-2.5 py-1 rounded-full bg-[color:var(--card-muted)] text-[color:var(--text-muted)]"
-              >
-                #{tg}
-              </span>
-            ))}
-          </div>
-        )}
       </Card>
 
       {/* 현재가 비교 */}
@@ -164,70 +191,103 @@ export default async function TradeDetail({ params }: Props) {
         </div>
       </Card>
 
-      {/* 당시 기록 */}
+      {/* 매매 이유 (종목별 전체 이력) */}
       <Card className="p-5">
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex items-center gap-2 mb-4">
           <Sparkles size={18} className="text-[color:var(--accent)]" />
-          <span className="font-bold text-[15px]">당시 매매 이유</span>
+          <span className="font-bold text-[15px]">매매 이유</span>
+          {instrumentTrades.length > 1 && (
+            <span className="text-[11px] text-[color:var(--text-subtle)] ml-1">
+              총 {instrumentTrades.length}건
+            </span>
+          )}
         </div>
-        <p className="text-[15px] leading-relaxed whitespace-pre-wrap">"{trade.thesis}"</p>
+        <div className="space-y-5">
+          {instrumentTrades.map((t, i) => (
+            <div
+              key={t.id}
+              className={
+                i > 0
+                  ? "pt-5 border-t border-[color:var(--border)]"
+                  : ""
+              }
+            >
+              <div className="flex items-center flex-wrap gap-2 mb-2">
+                <span
+                  className={`text-[11px] font-bold px-2 py-0.5 rounded ${
+                    t.side === "BUY"
+                      ? "bg-[color:var(--up-bg)] text-[color:var(--up)]"
+                      : "bg-[color:var(--down-bg)] text-[color:var(--down)]"
+                  }`}
+                >
+                  {t.side === "BUY" ? "매수" : "매도"}
+                </span>
+                <span className="text-[13px] font-semibold tabular">
+                  {formatDateKo(new Date(t.executedAt))}
+                </span>
+                <span className="text-xs text-[color:var(--text-muted)] tabular">
+                  {t.quantity}
+                  {it.currency === "USDT" ? "" : "주"} @{" "}
+                  {t.price.toLocaleString()}
+                  {it.currency === "KRW" ? "원" : ""}
+                </span>
+                <span className="text-[11px] text-[color:var(--text-subtle)] tabular">
+                  {"●".repeat(t.confidence)}
+                  {"○".repeat(5 - t.confidence)}
+                </span>
+                {t.id === trade.id && (
+                  <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded bg-[color:var(--accent)] text-white">
+                    지금 보는 중
+                  </span>
+                )}
+              </div>
+              <p className="text-[14px] leading-relaxed whitespace-pre-wrap">
+                &ldquo;{t.thesis}&rdquo;
+              </p>
+              {t.tags.length > 0 && (
+                <div className="mt-2 flex gap-1.5 flex-wrap">
+                  {t.tags.map((tg) => (
+                    <span
+                      key={tg}
+                      className="text-[11px] px-2 py-0.5 rounded-full bg-[color:var(--card-muted)] text-[color:var(--text-muted)]"
+                    >
+                      #{tg}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {t.review && (
+                <div className="mt-3 p-3 rounded-xl border border-[color:var(--border)] bg-gradient-to-br from-white to-[#F3F8F5]">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span
+                      className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                        t.review.verdict === "GOOD"
+                          ? "bg-[color:var(--up-bg)] text-[color:var(--up)]"
+                          : t.review.verdict === "BAD"
+                          ? "bg-[color:var(--down-bg)] text-[color:var(--down)]"
+                          : "bg-[color:var(--card-muted)] text-[color:var(--text-muted)]"
+                      }`}
+                    >
+                      {t.review.verdict === "GOOD"
+                        ? "👍 잘한 매매"
+                        : t.review.verdict === "BAD"
+                        ? "👎 아쉬운 매매"
+                        : "— 보통"}
+                    </span>
+                    <span className="text-[11px] text-[color:var(--text-muted)]">
+                      {formatDateKo(new Date(t.review.reviewedAt))} 복기
+                    </span>
+                  </div>
+                  <p className="text-[13px] leading-relaxed whitespace-pre-wrap">
+                    {t.review.reflection}
+                  </p>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
       </Card>
 
-      {/* 복기 */}
-      {trade.review ? (
-        <Card className="p-5 bg-gradient-to-br from-white to-[#F2F9F4]">
-          <div className="flex items-center gap-2 mb-3">
-            <span
-              className={`text-[11px] font-bold px-2 py-0.5 rounded ${
-                trade.review.verdict === "GOOD"
-                  ? "bg-[color:var(--up-bg)] text-[color:var(--up)]"
-                  : trade.review.verdict === "BAD"
-                  ? "bg-[color:var(--down-bg)] text-[color:var(--down)]"
-                  : "bg-[color:var(--card-muted)] text-[color:var(--text-muted)]"
-              }`}
-            >
-              {trade.review.verdict === "GOOD"
-                ? "👍 잘한 매매"
-                : trade.review.verdict === "BAD"
-                ? "👎 아쉬운 매매"
-                : "— 보통"}
-            </span>
-            <span className="text-xs text-[color:var(--text-muted)]">
-              {formatDateKo(new Date(trade.review.reviewedAt))} 작성
-            </span>
-          </div>
-          <p className="text-[14px] leading-relaxed whitespace-pre-wrap">
-            {trade.review.reflection}
-          </p>
-        </Card>
-      ) : (
-        <Card className="p-5">
-          <div className="font-bold text-[15px] mb-2">아직 복기 전입니다</div>
-          <p className="text-sm text-[color:var(--text-muted)] mb-4">
-            시간이 지났으니, 지금 돌아보면 어땠나요? 솔직하게 적어두면 다음 판단이
-            달라집니다.
-          </p>
-          <div className="grid grid-cols-3 gap-2 mb-3">
-            <button className="py-2.5 rounded-xl bg-[color:var(--up-bg)] text-[color:var(--up)] font-bold text-sm">
-              👍 잘함
-            </button>
-            <button className="py-2.5 rounded-xl bg-[color:var(--card-muted)] text-[color:var(--text-muted)] font-bold text-sm">
-              — 보통
-            </button>
-            <button className="py-2.5 rounded-xl bg-[color:var(--down-bg)] text-[color:var(--down)] font-bold text-sm">
-              👎 아쉬움
-            </button>
-          </div>
-          <textarea
-            placeholder="그때의 판단을 지금 어떻게 평가하나요?"
-            rows={4}
-            className="w-full bg-[color:var(--card-muted)] rounded-xl px-4 py-3 text-[14px] resize-none outline-none"
-          />
-          <button className="mt-3 w-full py-3 rounded-xl bg-[color:var(--accent)] text-white font-bold text-sm">
-            복기 저장
-          </button>
-        </Card>
-      )}
     </div>
   );
 }

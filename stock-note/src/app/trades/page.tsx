@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
 import Logo from "@/components/ui/Logo";
+import TopTabs from "@/components/shell/TopTabs";
 import { TRADES, inst, pendingReviews } from "@/lib/mock";
 import {
   formatMoney,
@@ -35,11 +36,7 @@ export default function TradesPage() {
 
   return (
     <div className="space-y-4 pt-2">
-      <div className="flex gap-5 px-1 text-lg font-bold">
-        <Link href="/" className="text-[color:var(--text-subtle)]">홈</Link>
-        <span className="text-[color:var(--text)]">매매일지</span>
-        <Link href="/analytics" className="text-[color:var(--text-subtle)]">분석</Link>
-      </div>
+      <TopTabs />
 
       <div className="-mx-4 px-4 overflow-x-auto">
         <div className="flex gap-2 min-w-max">

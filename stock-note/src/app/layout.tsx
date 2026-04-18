@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { ClerkProvider } from "@clerk/nextjs";
 import TopHeader from "@/components/shell/TopHeader";
 import BottomNav from "@/components/shell/BottomNav";
 
@@ -19,14 +20,16 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="ko" className="h-full antialiased">
-      <body className="min-h-full">
-        <div className="mx-auto w-full max-w-[480px] min-h-screen flex flex-col">
-          <TopHeader />
-          <main className="flex-1 pb-28 px-4">{children}</main>
-          <BottomNav />
-        </div>
-      </body>
-    </html>
+    <ClerkProvider>
+      <html lang="ko" className="h-full antialiased">
+        <body className="min-h-full">
+          <div className="mx-auto w-full max-w-[480px] min-h-screen flex flex-col">
+            <TopHeader />
+            <main className="flex-1 pb-28 px-4">{children}</main>
+            <BottomNav />
+          </div>
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }

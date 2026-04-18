@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/Card";
 import { TRADES, inst, toKRW } from "@/lib/mock";
 import { formatMoney, formatPct, deltaClass, deltaArrow } from "@/lib/format";
 import Logo from "@/components/ui/Logo";
+import TopTabs from "@/components/shell/TopTabs";
 
 export default function AnalyticsPage() {
   // 확신도별 건수
@@ -40,11 +41,7 @@ export default function AnalyticsPage() {
 
   return (
     <div className="space-y-4 pt-2">
-      <div className="flex gap-5 px-1 text-lg font-bold">
-        <Link href="/" className="text-[color:var(--text-subtle)]">홈</Link>
-        <Link href="/trades" className="text-[color:var(--text-subtle)]">매매일지</Link>
-        <span className="text-[color:var(--text)]">분석</span>
-      </div>
+      <TopTabs />
 
       {/* 핵심 지표 */}
       <div className="grid grid-cols-2 gap-3">

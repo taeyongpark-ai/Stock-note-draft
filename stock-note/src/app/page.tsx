@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import Sparkline from "@/components/ui/Sparkline";
 import Logo from "@/components/ui/Logo";
+import TopTabs from "@/components/shell/TopTabs";
 import {
   computePositions,
   totalPortfolioKRW,
@@ -32,16 +33,8 @@ export default function Home() {
 
   return (
     <div className="space-y-4 pt-2">
-      {/* 상단 탭 (포트폴리오/매매일지/복기/분석) */}
-      <div className="flex gap-5 px-1 text-lg font-bold">
-        <span className="text-[color:var(--text)]">홈</span>
-        <Link href="/trades" className="text-[color:var(--text-subtle)]">
-          매매일지
-        </Link>
-        <Link href="/analytics" className="text-[color:var(--text-subtle)]">
-          분석
-        </Link>
-      </div>
+      {/* 상단 탭 */}
+      <TopTabs />
 
       {/* 총자산 카드 */}
       <Card className="px-5 py-5">
