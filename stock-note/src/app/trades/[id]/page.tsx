@@ -4,8 +4,11 @@ import { Card } from "@/components/ui/Card";
 import Logo from "@/components/ui/Logo";
 import TradeChart from "@/components/ui/TradeChart";
 import ReviewForm from "./ReviewForm";
-import { getTradeById, getTradesByInstrumentId } from "@/db/queries";
-import { generatePriceSeries, type Trade as MockTrade } from "@/lib/mock";
+import {
+  getTradeById,
+  getTradesByInstrumentId,
+  getPriceHistory,
+} from "@/db/queries";
 import {
   formatMoney,
   formatPct,
@@ -33,42 +36,14 @@ export default async function TradeDetail({ params }: Props) {
   const opportunity = (it.currentPrice - trade.price) / trade.price;
   const totalAmount = trade.price * trade.quantity;
 
-  // generatePriceSeries는 mock 타입을 기대하므로 DB 데이터를 호환 형태로 변환
-  const mockInstrument = {
-    id: it.id,
-    symbol: it.symbol,
-    name: it.name,
-    market: it.market,
-    currency: it.currency,
-    color: it.color,
-    currentPrice: it.currentPrice,
-    dayChange: it.dayChange,
-  };
-  const mockTrades: MockTrade[] = instrumentTrades.map((t) => ({
-    id: t.id,
-    instrumentId: t.instrumentId,
-    side: t.side,
-    quantity: t.quantity,
-    price: t.price,
-    fee: t.fee,
-    executedAt: t.executedAt,
-    thesis: t.thesis,
-    confidence: t.confidence as 1 | 2 | 3 | 4 | 5,
-    tags: (t.tags as string[]) ?? [],
-    fxToKrw: t.fxToKrw ?? undefined,
-    review: (() => {
-      const r = instrumentRows.find((row) => row.trade.id === t.id)?.review;
-      if (!r) return undefined;
-      return {
-        tradeId: r.tradeId,
-        reviewedAt: r.reviewedAt,
-        verdict: r.verdict,
-        reflection: r.reflection,
-        counterfactualPrice: r.counterfactualPrice ?? undefined,
-        counterfactualAt: r.counterfactualAt ?? undefined,
-      };
-    })(),
-  }));
+  // 차트용 가격 시계열: 첫 매매 30일 전부터 오늘까지 일봉
+  const firstTradeDate = new Date(instrumentTrades[0].executedAt);
+  const chartFrom = new Date(firstTradeDate.getTime() - 30 * 86400000)
+    .toISOString()
+    .slice(0, 10);
+  const chartTo = now.toISOString().slice(0, 10);
+  const history = await getPriceHistory(trade.instrumentId, chartFrom, chartTo);
+  const chartSeries = history.map((h) => ({ date: h.date, price: h.close }));
 
   return (
     <div className="space-y-4 pt-2 pb-4">
@@ -110,18 +85,24 @@ export default async function TradeDetail({ params }: Props) {
         <div className="flex items-center justify-between mb-3">
           <span className="font-bold text-[15px]">주가 흐름</span>
           <span className="text-[11px] text-[color:var(--text-subtle)]">
-            미리보기용 가상 시계열
+            Yahoo Finance 일봉
           </span>
         </div>
-        <TradeChart
-          series={generatePriceSeries(mockInstrument, mockTrades, now)}
-          markers={mockTrades.map((t) => ({
-            date: t.executedAt,
-            price: t.price,
-            side: t.side,
-            current: t.id === trade.id,
-          }))}
-        />
+        {chartSeries.length === 0 ? (
+          <div className="py-10 text-center text-sm text-[color:var(--text-muted)]">
+            시세 데이터 수집 중입니다. 곧 표시될 예정이에요.
+          </div>
+        ) : (
+          <TradeChart
+            series={chartSeries}
+            markers={instrumentTrades.map((t) => ({
+              date: t.executedAt,
+              price: t.price,
+              side: t.side,
+              current: t.id === trade.id,
+            }))}
+          />
+        )}
         <div className="flex justify-between mt-2 text-[11px] text-[color:var(--text-muted)] tabular">
           <span>
             {formatDateKo(

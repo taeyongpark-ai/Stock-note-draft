@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import Sparkline from "@/components/ui/Sparkline";
@@ -7,9 +9,8 @@ import {
   getPortfolio,
   getRecentTrades,
   getPendingReviewTrades,
-  CURRENT_USD_KRW,
+  getMarketIndices,
 } from "@/db/queries";
-import { INDEX_SNAPSHOTS } from "@/lib/mock";
 import {
   formatMoney,
   formatPct,
@@ -20,18 +21,16 @@ import {
 } from "@/lib/format";
 import { ArrowRight, Clock } from "lucide-react";
 
-function toKRW(amount: number, currency: string): number {
-  if (currency === "KRW") return amount;
-  return amount * CURRENT_USD_KRW;
-}
-
 export default async function Home() {
   const now = new Date();
-  const [{ summary }, recent, pending] = await Promise.all([
+  const [{ summary, usdKrw }, recent, pending, indices] = await Promise.all([
     getPortfolio(),
     getRecentTrades(3),
     getPendingReviewTrades(now),
+    getMarketIndices(),
   ]);
+  const toKRW = (amount: number, currency: string) =>
+    currency === "KRW" ? amount : amount * usdKrw;
 
   return (
     <div className="space-y-4 pt-2">
@@ -92,24 +91,36 @@ export default async function Home() {
         <span>🇺🇸 장마감</span>
       </div>
 
-      {/* 지수 미니카드 (Phase B 이전: mock 유지) */}
+      {/* 지수 미니카드 (DB from Yahoo Finance) */}
       <div className="-mx-4 px-4 overflow-x-auto">
         <div className="flex gap-3 min-w-max pb-1">
-          {INDEX_SNAPSHOTS.map((s) => (
-            <Card key={s.name} className="w-[160px] shrink-0 px-4 py-3.5">
+          {indices.map((s) => (
+            <Card key={s.code} className="w-[160px] shrink-0 px-4 py-3.5">
               <div className="text-[13px] text-[color:var(--text-muted)]">
                 <span className="mr-1">{s.flag}</span>
                 {s.name}
               </div>
               <div className="mt-1 text-[22px] font-extrabold tabular">
-                {s.value.toLocaleString()}
+                {s.value > 0
+                  ? s.value.toLocaleString(undefined, {
+                      maximumFractionDigits: s.code === "USDKRW" ? 2 : 0,
+                    })
+                  : "—"}
               </div>
-              <div className={`text-[13px] font-semibold tabular ${deltaClass(s.change)}`}>
-                {deltaArrow(s.change)} {formatPct(s.change)}
+              <div
+                className={`text-[13px] font-semibold tabular ${deltaClass(s.dayChange)}`}
+              >
+                {deltaArrow(s.dayChange)} {formatPct(s.dayChange)}
               </div>
-              <div className="mt-2">
-                <Sparkline points={s.points} width={128} height={32} />
-              </div>
+              {(s.sparklinePoints as number[]).length > 0 && (
+                <div className="mt-2">
+                  <Sparkline
+                    points={s.sparklinePoints as number[]}
+                    width={128}
+                    height={32}
+                  />
+                </div>
+              )}
             </Card>
           ))}
         </div>

@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import TopTabs from "@/components/shell/TopTabs";
 import TradeList from "./TradeList";
 import { getAllTrades } from "@/db/queries";

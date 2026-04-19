@@ -6,12 +6,21 @@ import {
   reviews,
   cashBalances,
   fxTransactions,
+  priceHistory,
+  fxRates,
+  marketIndices,
 } from "./schema";
-import { eq, desc, and, isNull, sql } from "drizzle-orm";
+import { eq, desc, and, isNull, sql, gte, lte } from "drizzle-orm";
 import { computePositions, totalEquityKRW } from "@/lib/portfolio";
 
-// 현재 원/달러 환율: Phase B에서 외부 API로 대체 예정. 지금은 상수.
-export const CURRENT_USD_KRW = 1450;
+/** fx_rates 없을 때 fallback */
+const FALLBACK_USD_KRW = 1450;
+
+/** 현재 원/달러 환율 (fx_rates 테이블에서 읽음, 없으면 fallback) */
+export async function getCurrentUsdKrw(): Promise<number> {
+  const rows = await db.select().from(fxRates).where(eq(fxRates.pair, "USD_KRW"));
+  return rows[0]?.rate ?? FALLBACK_USD_KRW;
+}
 
 /** 전체 종목 목록 (관심 추가 모달 검색용) */
 export async function getAllInstruments() {
@@ -88,17 +97,42 @@ export async function getFxTransactions() {
   return db.select().from(fxTransactions).orderBy(desc(fxTransactions.executedAt));
 }
 
-/** 포트폴리오 (현재 보유 포지션 + 총평가) 계산 */
+/** 포트폴리오 (현재 보유 포지션 + 총평가 + 현재 환율) 계산 */
 export async function getPortfolio() {
-  const [allTrades, allInstruments, cash] = await Promise.all([
+  const [allTrades, allInstruments, cash, usdKrw] = await Promise.all([
     db.select().from(trades),
     db.select().from(instruments),
     db.select().from(cashBalances),
+    getCurrentUsdKrw(),
   ]);
   const instMap = new Map(allInstruments.map((i) => [i.id, i]));
-  const positions = computePositions(allTrades, instMap, CURRENT_USD_KRW);
-  const summary = totalEquityKRW(positions, cash, CURRENT_USD_KRW);
-  return { positions, cash, summary };
+  const positions = computePositions(allTrades, instMap, usdKrw);
+  const summary = totalEquityKRW(positions, cash, usdKrw);
+  return { positions, cash, summary, usdKrw };
+}
+
+/** 시장 지수 (홈 헤더용) */
+export async function getMarketIndices() {
+  return db.select().from(marketIndices).orderBy(marketIndices.sortOrder);
+}
+
+/** 특정 종목의 일봉 시계열 (date 오름차순) */
+export async function getPriceHistory(
+  instrumentId: string,
+  fromDate: string,
+  toDate: string
+) {
+  return db
+    .select()
+    .from(priceHistory)
+    .where(
+      and(
+        eq(priceHistory.instrumentId, instrumentId),
+        gte(priceHistory.date, fromDate),
+        lte(priceHistory.date, toDate)
+      )
+    )
+    .orderBy(priceHistory.date);
 }
 
 /** 복기 대기 (매도 후 7일 경과 + review 없음) */

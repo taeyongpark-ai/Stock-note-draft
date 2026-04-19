@@ -1,11 +1,15 @@
-import { clerkMiddleware } from "@clerk/nextjs/server";
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 const ALLOWED_USER_ID = "user_3CXCOad0eNONtrvgh9L9mVzrhYF";
 
-export default clerkMiddleware(async (auth, req) => {
-  const { userId } = await auth.protect();
+/** Clerk 인증 제외 경로 (cron은 Bearer 토큰으로 자체 인증) */
+const isPublicRoute = createRouteMatcher(["/api/cron/(.*)"]);
 
+export default clerkMiddleware(async (auth, req) => {
+  if (isPublicRoute(req)) return;
+
+  const { userId } = await auth.protect();
   if (userId !== ALLOWED_USER_ID) {
     return NextResponse.redirect(new URL("/unauthorized", req.url));
   }

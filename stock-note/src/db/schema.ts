@@ -1,5 +1,11 @@
 import { sql } from "drizzle-orm";
-import { sqliteTable, text, real, integer } from "drizzle-orm/sqlite-core";
+import {
+  sqliteTable,
+  text,
+  real,
+  integer,
+  primaryKey,
+} from "drizzle-orm/sqlite-core";
 
 // ---------- instruments ----------
 export const instruments = sqliteTable("instruments", {
@@ -81,6 +87,48 @@ export const newsItems = sqliteTable("news_items", {
   }).notNull(),
   url: text("url"),
   sortOrder: integer("sort_order").notNull().default(0),
+});
+
+// ---------- price_history ----------
+export const priceHistory = sqliteTable(
+  "price_history",
+  {
+    instrumentId: text("instrument_id")
+      .notNull()
+      .references(() => instruments.id),
+    date: text("date").notNull(), // YYYY-MM-DD
+    open: real("open").notNull(),
+    high: real("high").notNull(),
+    low: real("low").notNull(),
+    close: real("close").notNull(),
+    volume: real("volume"),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.instrumentId, table.date] }),
+  })
+);
+
+// ---------- market_indices ----------
+export const marketIndices = sqliteTable("market_indices", {
+  code: text("code").primaryKey(), // "KOSPI", "KOSDAQ", "SPX", "USDKRW"
+  name: text("name").notNull(),
+  flag: text("flag").notNull(),
+  yahooTicker: text("yahoo_ticker").notNull(),
+  value: real("value").notNull(),
+  dayChange: real("day_change").notNull(),
+  sparklinePoints: text("sparkline_points", { mode: "json" })
+    .$type<number[]>()
+    .notNull()
+    .default([]),
+  updatedAt: text("updated_at").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+});
+
+// ---------- fx_rates ----------
+export const fxRates = sqliteTable("fx_rates", {
+  pair: text("pair").primaryKey(), // 예: "USD_KRW"
+  rate: real("rate").notNull(),
+  updatedAt: text("updated_at").notNull(),
 });
 
 // ---------- cash_balances ----------

@@ -1,8 +1,10 @@
+export const dynamic = "force-dynamic";
+
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import Logo from "@/components/ui/Logo";
 import TopTabs from "@/components/shell/TopTabs";
-import { getPortfolio, CURRENT_USD_KRW } from "@/db/queries";
+import { getPortfolio } from "@/db/queries";
 import type { Position } from "@/lib/portfolio";
 import { formatMoney, formatPct, deltaClass, deltaArrow } from "@/lib/format";
 
@@ -26,14 +28,20 @@ function formatKRWAmount(v: number): string {
   return Math.round(v).toLocaleString("ko-KR") + "원";
 }
 
-function PositionList({ positions }: { positions: Position[] }) {
+function PositionList({
+  positions,
+  usdKrw,
+}: {
+  positions: Position[];
+  usdKrw: number;
+}) {
   return (
     <div>
       {positions.map((p, i) => {
         const isKRW = p.instrument.currency === "KRW";
         const unit = p.instrument.currency === "USDT" ? "" : "주";
         const krwCurrentPerShare =
-          p.instrument.currentPrice * (isKRW ? 1 : CURRENT_USD_KRW);
+          p.instrument.currentPrice * (isKRW ? 1 : usdKrw);
         return (
           <Link
             key={p.instrument.id}
@@ -90,7 +98,7 @@ function PositionList({ positions }: { positions: Position[] }) {
 }
 
 export default async function PortfolioPage() {
-  const { positions, cash, summary } = await getPortfolio();
+  const { positions, cash, summary, usdKrw } = await getPortfolio();
 
   const domestic = positions.filter((p) => p.instrument.currency === "KRW");
   const foreign = positions.filter((p) => p.instrument.currency !== "KRW");
@@ -134,7 +142,7 @@ export default async function PortfolioPage() {
                 <span className="text-[15px] font-bold tabular">
                   {formatNative(usdCash, "USD")}
                   <span className="text-xs font-normal text-[color:var(--text-muted)] ml-1">
-                    ≈ {formatKRWAmount(usdCash * CURRENT_USD_KRW)}
+                    ≈ {formatKRWAmount(usdCash * usdKrw)}
                   </span>
                 </span>
               </div>
@@ -152,7 +160,7 @@ export default async function PortfolioPage() {
               <div className="px-5 py-2 text-xs font-semibold text-[color:var(--text-muted)] bg-[color:var(--surface-raised)] border-y border-[color:var(--border)]">
                 국내주식
               </div>
-              <PositionList positions={domestic} />
+              <PositionList positions={domestic} usdKrw={usdKrw} />
             </>
           )}
 
@@ -165,7 +173,7 @@ export default async function PortfolioPage() {
               >
                 해외주식
               </div>
-              <PositionList positions={foreign} />
+              <PositionList positions={foreign} usdKrw={usdKrw} />
             </>
           )}
         </Card>
