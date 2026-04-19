@@ -108,6 +108,22 @@ export const priceHistory = sqliteTable(
   })
 );
 
+// ---------- market_indices ----------
+export const marketIndices = sqliteTable("market_indices", {
+  code: text("code").primaryKey(), // "KOSPI", "KOSDAQ", "SPX", "USDKRW"
+  name: text("name").notNull(),
+  flag: text("flag").notNull(),
+  yahooTicker: text("yahoo_ticker").notNull(),
+  value: real("value").notNull(),
+  dayChange: real("day_change").notNull(),
+  sparklinePoints: text("sparkline_points", { mode: "json" })
+    .$type<number[]>()
+    .notNull()
+    .default([]),
+  updatedAt: text("updated_at").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+});
+
 // ---------- fx_rates ----------
 export const fxRates = sqliteTable("fx_rates", {
   pair: text("pair").primaryKey(), // 예: "USD_KRW"

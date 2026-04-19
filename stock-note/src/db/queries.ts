@@ -8,6 +8,7 @@ import {
   fxTransactions,
   priceHistory,
   fxRates,
+  marketIndices,
 } from "./schema";
 import { eq, desc, and, isNull, sql, gte, lte } from "drizzle-orm";
 import { computePositions, totalEquityKRW } from "@/lib/portfolio";
@@ -108,6 +109,11 @@ export async function getPortfolio() {
   const positions = computePositions(allTrades, instMap, usdKrw);
   const summary = totalEquityKRW(positions, cash, usdKrw);
   return { positions, cash, summary, usdKrw };
+}
+
+/** 시장 지수 (홈 헤더용) */
+export async function getMarketIndices() {
+  return db.select().from(marketIndices).orderBy(marketIndices.sortOrder);
 }
 
 /** 특정 종목의 일봉 시계열 (date 오름차순) */

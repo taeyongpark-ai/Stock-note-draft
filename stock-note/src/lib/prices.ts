@@ -100,3 +100,76 @@ export async function fetchDailyHistory(
     return [];
   }
 }
+
+export type SearchHit = {
+  /** 앱 내부 표기용 심볼 (KR은 6자리, US는 원래 심볼) */
+  symbol: string;
+  /** Yahoo 풀 티커 (005930.KS, NVDA 등) */
+  yahooTicker: string;
+  name: string;
+  exchange: string;
+  market: "KRX" | "KOSDAQ" | "NASDAQ" | "NYSE" | "CRYPTO";
+  currency: "KRW" | "USD" | "USDT";
+  quoteType: string;
+};
+
+type YahooSearchResult = {
+  quotes?: Array<{
+    symbol?: string;
+    shortname?: string;
+    longname?: string;
+    exchange?: string;
+    quoteType?: string;
+    exchDisp?: string;
+  }>;
+};
+
+function classifyExchange(exchange: string): {
+  market: SearchHit["market"] | null;
+  currency: SearchHit["currency"];
+} {
+  const ex = exchange.toUpperCase();
+  if (ex === "KSC") return { market: "KRX", currency: "KRW" };
+  if (ex === "KOE") return { market: "KOSDAQ", currency: "KRW" };
+  if (ex === "NMS" || ex === "NGM" || ex === "NAS") return { market: "NASDAQ", currency: "USD" };
+  if (ex === "NYQ" || ex === "PCX" || ex === "ASE" || ex === "BATS") return { market: "NYSE", currency: "USD" };
+  if (ex === "CCC") return { market: "CRYPTO", currency: "USDT" };
+  return { market: null, currency: "USD" };
+}
+
+/** Yahoo 종목 검색 (이름/티커). ETF와 주식만 반환. */
+export async function searchTickers(query: string): Promise<SearchHit[]> {
+  const yahooFinance = await getYahoo();
+  try {
+    const res = (await yahooFinance.search(query, { quotesCount: 10 })) as YahooSearchResult;
+    const quotes = res?.quotes ?? [];
+    const hits: SearchHit[] = [];
+    for (const q of quotes) {
+      if (!q.symbol) continue;
+      const type = q.quoteType ?? "";
+      if (type !== "EQUITY" && type !== "ETF" && type !== "CRYPTOCURRENCY") continue;
+      const { market, currency } = classifyExchange(q.exchange ?? "");
+      if (!market) continue;
+      // KR은 Yahoo가 .KS/.KQ 붙여서 반환, 앱 내부는 6자리만 저장
+      const symbol =
+        market === "KRX" || market === "KOSDAQ"
+          ? q.symbol.replace(/\.(KS|KQ)$/, "")
+          : market === "CRYPTO"
+          ? q.symbol.replace(/-USD$/, "")
+          : q.symbol;
+      hits.push({
+        symbol,
+        yahooTicker: q.symbol,
+        name: q.longname ?? q.shortname ?? q.symbol,
+        exchange: q.exchDisp ?? q.exchange ?? "",
+        market,
+        currency,
+        quoteType: type,
+      });
+    }
+    return hits;
+  } catch (e) {
+    console.error(`[searchTickers] ${query}:`, e);
+    return [];
+  }
+}

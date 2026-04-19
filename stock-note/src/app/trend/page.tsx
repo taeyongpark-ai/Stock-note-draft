@@ -5,9 +5,16 @@ import { Card } from "@/components/ui/Card";
 import Logo from "@/components/ui/Logo";
 import TopTabs from "@/components/shell/TopTabs";
 import AddWatchlistButton from "@/components/watchlist/AddWatchlistButton";
-import { computePositions, type Instrument } from "@/lib/mock";
-import { getAllInstruments, getWatchlistInstruments } from "@/db/queries";
+import {
+  getAllInstruments,
+  getWatchlistInstruments,
+  getPortfolio,
+} from "@/db/queries";
+import type { InferSelectModel } from "drizzle-orm";
+import type { instruments } from "@/db/schema";
 import { formatPct, deltaClass, deltaArrow } from "@/lib/format";
+
+type Instrument = InferSelectModel<typeof instruments>;
 
 function priceLabel(it: Instrument): string {
   if (it.currency === "KRW") {
@@ -52,12 +59,12 @@ function Row({ it }: { it: Instrument }) {
 }
 
 export default async function TrendPage() {
-  const positions = computePositions();
-  const holdingInstruments = positions.map((p) => p.instrument);
-  const [watchInstruments, allInstruments] = await Promise.all([
+  const [{ positions }, watchInstruments, allInstruments] = await Promise.all([
+    getPortfolio(),
     getWatchlistInstruments(),
     getAllInstruments(),
   ]);
+  const holdingInstruments = positions.map((p) => p.instrument);
   const existingIds = watchInstruments.map((i) => i.id);
 
   return (

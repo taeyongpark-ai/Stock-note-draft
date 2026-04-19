@@ -1,14 +1,15 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import Logo from "@/components/ui/Logo";
 import { parseTradeSMS } from "@/lib/parseTradeSMS";
 import { createTrade } from "@/app/trades/actions";
-import { ChevronLeft, Search } from "lucide-react";
+import { ChevronLeft, Search, Globe } from "lucide-react";
 import type { InferSelectModel } from "drizzle-orm";
 import type { instruments } from "@/db/schema";
+import type { SearchHit } from "@/lib/prices";
 
 type Instrument = InferSelectModel<typeof instruments>;
 type Market = Instrument["market"];
@@ -37,6 +38,29 @@ export default function TradeForm({
   const [sms, setSms] = useState("");
   const [smsNote, setSmsNote] = useState<SmsNote | null>(null);
   const [pending, startTransition] = useTransition();
+  const [remoteHits, setRemoteHits] = useState<SearchHit[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  // Yahoo 검색 (로컬에 없는 경우 대비)
+  useEffect(() => {
+    if (selected || !q.trim() || q.trim().length < 2) {
+      setRemoteHits([]);
+      return;
+    }
+    const handle = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+        const json = await res.json();
+        setRemoteHits(json.hits ?? []);
+      } catch {
+        setRemoteHits([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [q, selected]);
 
   function applySMS(text: string) {
     const parsed = parseTradeSMS(text);
@@ -96,6 +120,27 @@ export default function TradeForm({
           i.symbol.toLowerCase().includes(q.toLowerCase())
       )
     : [];
+
+  const localSymbolsUpper = new Set(allInstruments.map((i) => i.symbol.toUpperCase()));
+  const newRemoteHits = remoteHits.filter(
+    (h) => !localSymbolsUpper.has(h.symbol.toUpperCase())
+  );
+
+  function pickRemote(hit: SearchHit) {
+    // 선택만 — 실제 insert는 submit 시 createTrade가 newInstrument로 처리
+    const synth: Instrument = {
+      id: `yh-${hit.symbol}`,
+      symbol: hit.symbol,
+      name: hit.name,
+      market: hit.market,
+      currency: hit.currency,
+      color: "#94A3B8",
+      currentPrice: 0,
+      dayChange: 0,
+    };
+    setSelected(synth);
+    setQ("");
+  }
 
   const total = selected && qty && price ? Number(qty) * Number(price) : 0;
   const canSubmit =
@@ -244,27 +289,62 @@ export default function TradeForm({
                 className="bg-transparent outline-none w-full text-sm"
               />
             </div>
-            {results.length > 0 && (
-              <div className="border-t border-[color:var(--border)] -mx-5 px-1 mt-1">
-                {results.map((r) => (
-                  <button
-                    key={r.id}
-                    onClick={() => setSelected(r)}
-                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[color:var(--card-muted)] rounded-xl"
-                  >
-                    <Logo name={r.name} color={r.color} size={36} />
-                    <div className="flex-1 text-left">
-                      <div className="font-semibold text-[14px]">{r.name}</div>
-                      <div className="text-xs text-[color:var(--text-muted)]">
-                        {r.market} · {r.symbol}
-                      </div>
+            {(results.length > 0 || newRemoteHits.length > 0 || searching) && (
+              <div className="border-t border-[color:var(--border)] -mx-5 px-1 mt-1 max-h-80 overflow-y-auto">
+                {results.length > 0 && (
+                  <>
+                    <div className="px-4 py-2 text-[11px] font-bold text-[color:var(--text-subtle)] uppercase">
+                      등록된 종목
                     </div>
-                    <div className="text-[13px] tabular font-semibold">
-                      {r.currentPrice.toLocaleString()}
-                      {r.currency === "KRW" ? "원" : ""}
+                    {results.map((r) => (
+                      <button
+                        key={r.id}
+                        onClick={() => setSelected(r)}
+                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[color:var(--card-muted)] rounded-xl"
+                      >
+                        <Logo name={r.name} color={r.color} size={36} />
+                        <div className="flex-1 text-left">
+                          <div className="font-semibold text-[14px]">{r.name}</div>
+                          <div className="text-xs text-[color:var(--text-muted)]">
+                            {r.market} · {r.symbol}
+                          </div>
+                        </div>
+                        <div className="text-[13px] tabular font-semibold">
+                          {r.currentPrice.toLocaleString()}
+                          {r.currency === "KRW" ? "원" : ""}
+                        </div>
+                      </button>
+                    ))}
+                  </>
+                )}
+                {q.trim().length >= 2 && (
+                  <>
+                    <div className="px-4 py-2 text-[11px] font-bold text-[color:var(--text-subtle)] uppercase flex items-center gap-1.5">
+                      <Globe size={12} />
+                      Yahoo Finance 검색
+                      {searching && (
+                        <span className="font-normal text-[color:var(--text-subtle)]">
+                          검색 중…
+                        </span>
+                      )}
                     </div>
-                  </button>
-                ))}
+                    {newRemoteHits.map((hit) => (
+                      <button
+                        key={hit.yahooTicker}
+                        onClick={() => pickRemote(hit)}
+                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[color:var(--card-muted)] rounded-xl"
+                      >
+                        <Logo name={hit.name} color="#94A3B8" size={36} />
+                        <div className="flex-1 text-left">
+                          <div className="font-semibold text-[14px]">{hit.name}</div>
+                          <div className="text-xs text-[color:var(--text-muted)]">
+                            {hit.exchange} · {hit.symbol}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </>
+                )}
               </div>
             )}
           </>

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/client";
-import { instruments, priceHistory, fxRates } from "@/db/schema";
+import { instruments, priceHistory, fxRates, marketIndices } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { fetchQuote, fetchDailyHistory, yahooTickerFor } from "@/lib/prices";
 
@@ -83,27 +83,63 @@ export async function GET(req: NextRequest) {
     })
   );
 
-  // USD_KRW 환율
-  try {
-    const fx = await fetchQuote("KRW=X");
-    if (fx) {
-      await db
-        .insert(fxRates)
-        .values({
-          pair: "USD_KRW",
-          rate: fx.price,
-          updatedAt: new Date().toISOString(),
-        })
-        .onConflictDoUpdate({
-          target: fxRates.pair,
-          set: { rate: fx.price, updatedAt: new Date().toISOString() },
-        });
-    }
-  } catch {}
+  // 시장 지수 갱신 (KOSPI, KOSDAQ, SPX, USDKRW 등)
+  const indices = await db.select().from(marketIndices);
+  const indexResults = await Promise.all(
+    indices.map(async (idx) => {
+      try {
+        const [quote, hist] = await Promise.all([
+          fetchQuote(idx.yahooTicker),
+          fetchDailyHistory(idx.yahooTicker, new Date(Date.now() - 35 * 86400000)),
+        ]);
+        if (!quote) return { code: idx.code, status: "no-quote" as const };
+        const sparkline = hist.slice(-30).map((b) => b.close);
+        await db
+          .update(marketIndices)
+          .set({
+            value: quote.price,
+            dayChange: quote.dayChangePct,
+            sparklinePoints: sparkline,
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(marketIndices.code, idx.code));
+        return { code: idx.code, status: "ok" as const, value: quote.price };
+      } catch (e) {
+        return {
+          code: idx.code,
+          status: "error" as const,
+          error: e instanceof Error ? e.message : String(e),
+        };
+      }
+    })
+  );
+
+  // USD_KRW 환율 (fx_rates — 포트폴리오 계산용)
+  const usdKrwRow = indexResults.find((r) => r.code === "USDKRW" && r.status === "ok");
+  if (usdKrwRow && "value" in usdKrwRow) {
+    await db
+      .insert(fxRates)
+      .values({
+        pair: "USD_KRW",
+        rate: usdKrwRow.value!,
+        updatedAt: new Date().toISOString(),
+      })
+      .onConflictDoUpdate({
+        target: fxRates.pair,
+        set: { rate: usdKrwRow.value!, updatedAt: new Date().toISOString() },
+      });
+  }
 
   return NextResponse.json({
-    updated: results.filter((r) => r.status === "ok").length,
-    total: results.length,
-    results,
+    instruments: {
+      updated: results.filter((r) => r.status === "ok").length,
+      total: results.length,
+      results,
+    },
+    indices: {
+      updated: indexResults.filter((r) => r.status === "ok").length,
+      total: indexResults.length,
+      results: indexResults,
+    },
   });
 }
