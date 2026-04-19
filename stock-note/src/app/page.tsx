@@ -10,6 +10,7 @@ import {
   getRecentTrades,
   getPendingReviewTrades,
   getMarketIndices,
+  getMonthlyLlmUsage,
 } from "@/db/queries";
 import {
   formatMoney,
@@ -23,12 +24,14 @@ import { ArrowRight, Clock } from "lucide-react";
 
 export default async function Home() {
   const now = new Date();
-  const [{ summary, usdKrw }, recent, pending, indices] = await Promise.all([
+  const [{ summary, usdKrw }, recent, pending, indices, llm] = await Promise.all([
     getPortfolio(),
     getRecentTrades(3),
     getPendingReviewTrades(now),
     getMarketIndices(),
+    getMonthlyLlmUsage(),
   ]);
+  const llmWarn = llm.todayUsd >= 0.8; // 일일 캡 $1 중 80% 넘으면 경고
   const toKRW = (amount: number, currency: string) =>
     currency === "KRW" ? amount : amount * usdKrw;
 
@@ -90,6 +93,20 @@ export default async function Home() {
         <span className="text-[color:var(--text-subtle)]">·</span>
         <span>🇺🇸 장마감</span>
       </div>
+
+      {/* AI 사용량 배너 (임계치 넘으면 경고) */}
+      {llm.monthCalls > 0 && (
+        <div
+          className={`text-[11px] px-3 py-1.5 rounded-lg tabular text-center ${
+            llmWarn
+              ? "bg-[color:var(--down-bg)] text-[color:var(--down)] font-bold"
+              : "bg-[color:var(--card-muted)] text-[color:var(--text-subtle)]"
+          }`}
+        >
+          {llmWarn && "⚠️ "}AI 요약 이번 달 ${llm.monthTotalUsd.toFixed(3)} · 오늘 ${llm.todayUsd.toFixed(3)} ({llm.monthCalls}회)
+          {llmWarn && " — 일일 $1 캡 근접"}
+        </div>
+      )}
 
       {/* 지수 미니카드 (DB from Yahoo Finance) */}
       <div className="-mx-4 px-4 overflow-x-auto">

@@ -108,6 +108,17 @@ export const priceHistory = sqliteTable(
   })
 );
 
+// ---------- llm_usage ----------
+// 일별 LLM 사용량 누적. 월간 비용 추적 + 소프트 캡 용도.
+export const llmUsage = sqliteTable("llm_usage", {
+  date: text("date").primaryKey(), // YYYY-MM-DD (KST)
+  inputTokens: integer("input_tokens").notNull().default(0),
+  outputTokens: integer("output_tokens").notNull().default(0),
+  costUsd: real("cost_usd").notNull().default(0),
+  calls: integer("calls").notNull().default(0),
+  updatedAt: text("updated_at").notNull(),
+});
+
 // ---------- market_indices ----------
 export const marketIndices = sqliteTable("market_indices", {
   code: text("code").primaryKey(), // "KOSPI", "KOSDAQ", "SPX", "USDKRW"
