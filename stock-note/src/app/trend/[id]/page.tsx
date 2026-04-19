@@ -144,7 +144,11 @@ export default async function TrendDetail({ params }: Props) {
           </div>
         ) : (
           <>
-            <TradeChart series={series} markers={[...tradeMarkers, ...eventMarkers]} />
+            <TradeChart
+              series={series}
+              markers={[...tradeMarkers, ...eventMarkers]}
+              currency={it.currency}
+            />
             <div className="flex items-center gap-4 mt-3 text-[11px] text-[color:var(--text-muted)]">
               <span className="flex items-center gap-1.5">
                 <span

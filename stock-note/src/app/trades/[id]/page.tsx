@@ -101,6 +101,7 @@ export default async function TradeDetail({ params }: Props) {
               side: t.side,
               current: t.id === trade.id,
             }))}
+            currency={it.currency}
           />
         )}
         <div className="flex justify-between mt-2 text-[11px] text-[color:var(--text-muted)] tabular">
