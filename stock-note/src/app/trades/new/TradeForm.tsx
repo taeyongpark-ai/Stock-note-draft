@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import Logo from "@/components/ui/Logo";
 import { parseTradeSMS } from "@/lib/parseTradeSMS";
-import { createTrade } from "@/app/trades/actions";
+import { createTrade, recordCashMovement } from "@/app/trades/actions";
 import { ChevronLeft, Search, Globe } from "lucide-react";
 import type { InferSelectModel } from "drizzle-orm";
 import type { instruments } from "@/db/schema";
@@ -40,6 +40,10 @@ export default function TradeForm({
   const [pending, startTransition] = useTransition();
   const [remoteHits, setRemoteHits] = useState<SearchHit[]>([]);
   const [searching, setSearching] = useState(false);
+  const [cashPending, setCashPending] = useState<
+    | null
+    | { direction: "IN" | "OUT"; amount: number; availableAfter?: number; executedAt?: string }
+  >(null);
 
   // Yahoo 검색 (로컬에 없는 경우 대비)
   useEffect(() => {
@@ -77,6 +81,20 @@ export default function TradeForm({
       setSmsNote({
         type: "info",
         msg: `환전 감지: ${dirLabel} ${parsed.currency} ${parsed.fxAmount.toLocaleString()} @ ${parsed.rate.toLocaleString()} — 환전 기록은 추후 외화계좌 기능 추가 후 지원합니다.`,
+      });
+      return;
+    }
+    if (parsed.kind === "CASH_IN" || parsed.kind === "CASH_OUT") {
+      const isIn = parsed.kind === "CASH_IN";
+      setCashPending({
+        direction: isIn ? "IN" : "OUT",
+        amount: parsed.amount,
+        availableAfter: parsed.availableAfter,
+        executedAt: parsed.executedAt,
+      });
+      setSmsNote({
+        type: "info",
+        msg: `${isIn ? "입금" : "출금"} ${parsed.amount.toLocaleString()}원 감지. 아래 "현금 잔고에 반영" 버튼을 눌러 확정하세요.`,
       });
       return;
     }
@@ -227,6 +245,36 @@ export default function TradeForm({
           >
             {smsNote.msg}
           </div>
+        )}
+        {cashPending && (
+          <button
+            disabled={pending}
+            onClick={() => {
+              startTransition(async () => {
+                await recordCashMovement({
+                  direction: cashPending.direction,
+                  currency: "KRW",
+                  amount: cashPending.amount,
+                  executedAt: cashPending.executedAt,
+                });
+                setCashPending(null);
+                setSms("");
+                setSmsNote({
+                  type: "ok",
+                  msg: `원화 잔고에 ${cashPending.direction === "IN" ? "+" : "-"}${cashPending.amount.toLocaleString()}원 반영됨.`,
+                });
+              });
+            }}
+            className={`w-full py-3 rounded-xl text-sm font-bold ${
+              pending
+                ? "bg-[color:var(--card-muted)] text-[color:var(--text-subtle)]"
+                : "bg-[color:var(--accent)] text-white"
+            }`}
+          >
+            {pending
+              ? "반영 중…"
+              : `${cashPending.direction === "IN" ? "입금" : "출금"} ${cashPending.amount.toLocaleString()}원 현금 잔고에 반영`}
+          </button>
         )}
       </Card>
 

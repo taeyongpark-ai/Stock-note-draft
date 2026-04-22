@@ -26,8 +26,27 @@ export type ParsedFX = {
   executedAt?: string;
 };
 
+/** 증권사 계좌 입금/출금 (은행 <-> 증권사 이체) */
+export type ParsedCashIn = {
+  kind: "CASH_IN";
+  broker: "NH";
+  currency: "KRW";
+  amount: number;
+  availableAfter?: number;
+  executedAt?: string;
+};
+export type ParsedCashOut = {
+  kind: "CASH_OUT";
+  broker: "NH";
+  currency: "KRW";
+  amount: number;
+  availableAfter?: number;
+  executedAt?: string;
+};
+export type ParsedCashMovement = ParsedCashIn | ParsedCashOut;
+
 export type ParsedUnknown = { kind: "UNKNOWN"; raw: string };
-export type ParsedSMS = ParsedStock | ParsedFX | ParsedUnknown;
+export type ParsedSMS = ParsedStock | ParsedFX | ParsedCashMovement | ParsedUnknown;
 
 /** "라벨: 값" 한 줄에서 값만 추출 */
 function field(text: string, label: string): string | undefined {
@@ -54,9 +73,42 @@ function parseKDate(s: string): string | undefined {
   return new Date(year, month - 1, day).toISOString();
 }
 
+/** "[04/19 19:37]" → 올해 기준 ISO. 미래면 작년 */
+function parseBracketTimestamp(s: string): string | undefined {
+  const m = s.match(/\[(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{1,2})\]/);
+  if (!m) return undefined;
+  const [, mm, dd, hh, mi] = m;
+  const now = new Date();
+  const dt = new Date(
+    now.getFullYear(),
+    parseInt(mm, 10) - 1,
+    parseInt(dd, 10),
+    parseInt(hh, 10),
+    parseInt(mi, 10)
+  );
+  if (dt > now) dt.setFullYear(now.getFullYear() - 1);
+  return dt.toISOString();
+}
+
 export function parseTradeSMS(text: string): ParsedSMS {
   const t = text.replace(/\r/g, "").trim();
   if (!t) return { kind: "UNKNOWN", raw: text };
+
+  // 입금/출금 안내
+  if (t.includes("입금안내") || t.includes("출금안내")) {
+    const isIn = t.includes("입금안내");
+    // "금액 10,000,000원" 라벨 라인
+    const amountMatch = t.match(/금액\s*([\d,]+)\s*원/);
+    const availableMatch = t.match(/출금가능금액\s*[:：]?\s*([\d,]+)\s*원/);
+    return {
+      kind: isIn ? "CASH_IN" : "CASH_OUT",
+      broker: "NH",
+      currency: "KRW",
+      amount: amountMatch ? toNumber(amountMatch[1]) : 0,
+      availableAfter: availableMatch ? toNumber(availableMatch[1]) : undefined,
+      executedAt: parseBracketTimestamp(t),
+    };
+  }
 
   // 환전
   if (t.includes("환전내역") || t.includes("환전구분")) {

@@ -3,6 +3,9 @@ import { db } from "@/db/client";
 import { instruments, priceHistory, fxRates, marketIndices } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { fetchQuote, fetchDailyHistory, yahooTickerFor } from "@/lib/prices";
+import { processEvent, EVENT_THRESHOLD } from "@/lib/detect-events";
+import { isDailyCapReached } from "@/lib/summarize";
+import { watchlist, trades as tradesTable } from "@/db/schema";
 
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
@@ -19,7 +22,10 @@ export async function GET(req: NextRequest) {
   }
 
   const allInstruments = await db.select().from(instruments);
-  const since = new Date(Date.now() - 95 * 86400000);
+  const historyFromParam = req.nextUrl.searchParams.get("historyFrom");
+  const since = historyFromParam
+    ? new Date(historyFromParam)
+    : new Date(Date.now() - 95 * 86400000);
 
   // 병렬 fetch — 동시에 여러 종목 처리
   const results = await Promise.all(
@@ -130,6 +136,32 @@ export async function GET(req: NextRequest) {
       });
   }
 
+  // 3% 이상 등락 자동 감지 (관심+보유 종목만) → 이벤트 + 뉴스 + LLM 요약
+  const today = new Date().toISOString().slice(0, 10);
+  const [watched, tradedRows] = await Promise.all([
+    db.select().from(watchlist),
+    db.select({ id: tradesTable.instrumentId }).from(tradesTable),
+  ]);
+  const targetIds = new Set<string>();
+  watched.forEach((w) => targetIds.add(w.instrumentId));
+  tradedRows.forEach((r) => targetIds.add(r.id));
+
+  const eventResults: Array<{ id: string; status: string; news?: number }> = [];
+  for (const inst of allInstruments) {
+    if (!targetIds.has(inst.id)) continue;
+    if (Math.abs(inst.dayChange) < EVENT_THRESHOLD) continue;
+    if (await isDailyCapReached()) {
+      eventResults.push({ id: inst.id, status: "daily-cap-reached" });
+      break;
+    }
+    const r = await processEvent(inst, today, inst.dayChange);
+    eventResults.push({
+      id: inst.id,
+      status: r.ok ? "ok" : r.skipped ?? "unknown",
+      news: r.news,
+    });
+  }
+
   return NextResponse.json({
     instruments: {
       updated: results.filter((r) => r.status === "ok").length,
@@ -140,6 +172,10 @@ export async function GET(req: NextRequest) {
       updated: indexResults.filter((r) => r.status === "ok").length,
       total: indexResults.length,
       results: indexResults,
+    },
+    events: {
+      new: eventResults.filter((r) => r.status === "ok").length,
+      results: eventResults,
     },
   });
 }

@@ -9,8 +9,12 @@ import {
   priceHistory,
   fxRates,
   marketIndices,
+  marketEvents,
+  newsItems,
+  instrumentCatalysts,
+  llmUsage,
 } from "./schema";
-import { eq, desc, and, isNull, sql, gte, lte } from "drizzle-orm";
+import { eq, desc, and, isNull, sql, gte, lte, inArray, like } from "drizzle-orm";
 import { computePositions, totalEquityKRW } from "@/lib/portfolio";
 
 /** fx_rates 없을 때 fallback */
@@ -109,6 +113,60 @@ export async function getPortfolio() {
   const positions = computePositions(allTrades, instMap, usdKrw);
   const summary = totalEquityKRW(positions, cash, usdKrw);
   return { positions, cash, summary, usdKrw };
+}
+
+/** 특정 종목의 이벤트 (뉴스 포함, 최신순) */
+export async function getMarketEventsByInstrumentId(instrumentId: string) {
+  const events = await db
+    .select()
+    .from(marketEvents)
+    .where(eq(marketEvents.instrumentId, instrumentId))
+    .orderBy(desc(marketEvents.date));
+  if (events.length === 0) return [];
+  const news = await db
+    .select()
+    .from(newsItems)
+    .where(
+      inArray(
+        newsItems.eventId,
+        events.map((e) => e.id)
+      )
+    )
+    .orderBy(newsItems.sortOrder);
+  return events.map((e) => ({
+    ...e,
+    news: news.filter((n) => n.eventId === e.id),
+  }));
+}
+
+/** 특정 종목의 호재/악재 */
+export async function getInstrumentCatalyst(instrumentId: string) {
+  const rows = await db
+    .select()
+    .from(instrumentCatalysts)
+    .where(eq(instrumentCatalysts.instrumentId, instrumentId));
+  return rows[0] ?? null;
+}
+
+/** 이번 달 LLM 사용량 합계 (KST 월초 ~ 오늘) */
+export async function getMonthlyLlmUsage() {
+  const now = new Date(Date.now() + 9 * 3600_000);
+  const year = now.getUTCFullYear();
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const monthPrefix = `${year}-${month}-`;
+  const rows = await db
+    .select()
+    .from(llmUsage)
+    .where(like(llmUsage.date, `${monthPrefix}%`));
+  const totalCost = rows.reduce((s, r) => s + r.costUsd, 0);
+  const totalCalls = rows.reduce((s, r) => s + r.calls, 0);
+  const todayRow = rows.find((r) => r.date === now.toISOString().slice(0, 10));
+  return {
+    monthTotalUsd: totalCost,
+    monthCalls: totalCalls,
+    todayUsd: todayRow?.costUsd ?? 0,
+    todayCalls: todayRow?.calls ?? 0,
+  };
 }
 
 /** 시장 지수 (홈 헤더용) */
